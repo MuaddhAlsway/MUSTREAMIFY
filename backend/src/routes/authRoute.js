@@ -1,27 +1,33 @@
 import express from "express";
+
 import {
   login,
   logout,
   onboard,
   signup,
-  forgotPassword,
-  resetPassword,
 } from "../controller/authController.js";
+
 import { protectRoute } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/signup", signup );
+// ==========================================
+// AUTH ROUTES
+// ==========================================
 
+// Signup
+router.post("/signup", signup);
+
+// Login
 router.post("/login", login);
 
-
+// Logout
 router.post("/logout", logout);
 
+// Onboarding
 router.post("/onboarding", protectRoute, onboard);
-// forget password
-// send-reset-password-email
-// check if user is logged in and return user data
+
+// Get currently logged-in user
 router.get("/me", protectRoute, (req, res) => {
   res.status(200).json({
     success: true,
@@ -29,19 +35,4 @@ router.get("/me", protectRoute, (req, res) => {
   });
 });
 
-// ==========================================
-// PASSWORD RECOVERY
-// ==========================================
-
-// User submits their email
-router.post(
-  "/forgot-password",
-  forgotPassword
-);
-
-// User submits new password using reset token
-router.post(
-  "/reset-password/:token",
-  resetPassword
-);
 export default router;
