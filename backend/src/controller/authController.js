@@ -1,14 +1,19 @@
 import User from "../models/userModel.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { Resend } from "resend";
+
 import { upsertStreamifyUser } from "../lib/stream.js";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ==========================================
 // Generate JWT
 // ==========================================
 const generateToken = (userId) => {
   return jwt.sign(
-    { id: userId },
+    { userId },
     process.env.JWT_SECRET_KEY,
     { expiresIn: "7d" }
   );
@@ -21,7 +26,10 @@ const getCookieOptions = () => ({
   maxAge: 7 * 24 * 60 * 60 * 1000,
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  sameSite:
+    process.env.NODE_ENV === "production"
+      ? "none"
+      : "lax",
 });
 
 // ==========================================
@@ -43,7 +51,8 @@ export async function signup(req, res) {
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 6 characters long",
+        message:
+          "Password must be at least 6 characters long",
       });
     }
 
@@ -57,8 +66,15 @@ export async function signup(req, res) {
       });
     }
 
+    // Normalize email
+    const normalizedEmail = email
+      .toLowerCase()
+      .trim();
+
     // 4. Check existing user
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (existingUser) {
       return res.status(400).json({
@@ -68,28 +84,27 @@ export async function signup(req, res) {
     }
 
     // 5. Generate random avatar
-    const index = Math.floor(Math.random() * 100) + 1;
+    const index =
+      Math.floor(Math.random() * 100) + 1;
 
     const randomAvatar =
       `https://avatarapi.runflare.run/public/${index}.png`;
 
-    // 6. Hash password
-    const salt = await bcrypt.genSalt(10);
-
-    const hashedPassword = await bcrypt.hash(
-      password,
-      salt
-    );
-
-    // 7. Create MongoDB user
+    // 6. Create MongoDB user
+    //
+    // IMPORTANT:
+    // Do NOT bcrypt.hash() here.
+    //
+    // userSchema.pre("save") will automatically
+    // hash the password before MongoDB saves it.
     const newUser = await User.create({
       fullName,
-      email,
-      password: hashedPassword,
+      email: normalizedEmail,
+      password,
       profilePic: randomAvatar,
     });
 
-    // 8. Create user in Stream
+    // 7. Create Stream user
     try {
       await upsertStreamifyUser({
         id: newUser._id.toString(),
@@ -115,17 +130,17 @@ export async function signup(req, res) {
       });
     }
 
-    // 9. Generate JWT
+    // 8. Generate JWT
     const token = generateToken(newUser._id);
 
-    // 10. Store JWT in cookie
+    // 9. Store JWT in cookie
     res.cookie(
       "token",
       token,
       getCookieOptions()
     );
 
-    // 11. Return response
+    // 10. Return response
     return res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -170,7 +185,9 @@ export async function login(req, res) {
     }
 
     // 2. Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -180,10 +197,11 @@ export async function login(req, res) {
     }
 
     // 3. Compare password
-    const isPasswordCorrect = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isPasswordCorrect =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
 
     if (!isPasswordCorrect) {
       return res.status(401).json({
@@ -237,7 +255,8 @@ export async function logout(req, res) {
   try {
     res.clearCookie("token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure:
+        process.env.NODE_ENV === "production",
       sameSite:
         process.env.NODE_ENV === "production"
           ? "none"
@@ -284,34 +303,38 @@ export async function onboard(req, res) {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Please provide all required fields",
+        message:
+          "Please provide all required fields",
 
         missingFields: [
           !fullName && "fullName",
           !bio && "bio",
-          !nativeLanguage && "nativeLanguage",
-          !learningLanguage && "learningLanguage",
+          !nativeLanguage &&
+            "nativeLanguage",
+          !learningLanguage &&
+            "learningLanguage",
           !location && "location",
         ].filter(Boolean),
       });
     }
 
     // 2. Update MongoDB
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      {
-        fullName,
-        bio,
-        nativeLanguage,
-        learningLanguage,
-        location,
-        isOnBoarded: true,
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
-    ).select("-password");
+    const updatedUser =
+      await User.findByIdAndUpdate(
+        userId,
+        {
+          fullName,
+          bio,
+          nativeLanguage,
+          learningLanguage,
+          location,
+          isOnBoarded: true,
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      ).select("-password");
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -327,14 +350,11 @@ export async function onboard(req, res) {
       image: updatedUser.profilePic || "",
     });
 
-    console.log(
-      `Stream user updated: ${updatedUser._id.toString()}`
-    );
-
     // 4. Response
     return res.status(200).json({
       success: true,
-      message: "Onboarding completed successfully",
+      message:
+        "Onboarding completed successfully",
       user: updatedUser,
     });
   } catch (error) {
@@ -344,6 +364,258 @@ export async function onboard(req, res) {
       success: false,
       message: "Onboarding failed",
       error: error.message,
+    });
+  }
+}
+
+// ==========================================
+// FORGOT PASSWORD
+// ==========================================
+export async function forgotPassword(req, res) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
+    /*
+      Don't reveal whether an email exists.
+
+      This prevents attackers from checking
+      which email addresses are registered.
+    */
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "If an account exists with this email, a password reset link has been sent.",
+      });
+    }
+
+    // 1. Generate secure random token
+    const resetToken = crypto
+      .randomBytes(32)
+      .toString("hex");
+
+    // 2. Hash token before saving it
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // 3. Store hashed token
+    user.resetPasswordToken = hashedToken;
+
+    // 15 minute expiration
+    user.resetPasswordExpires =
+      Date.now() + 15 * 60 * 1000;
+
+    await user.save();
+
+    // 4. Frontend reset URL
+    const resetURL =
+      `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+
+    // 5. Send email
+    try {
+      const { error } =
+        await resend.emails.send({
+          from:
+            process.env.RESEND_FROM_EMAIL ||
+            "MUSTREAMIFY <onboarding@resend.dev>",
+
+          to: user.email,
+
+          subject:
+            "Reset your MUSTREAMIFY password",
+
+          html: `
+            <div
+              style="
+                font-family: Arial, sans-serif;
+                max-width: 600px;
+                margin: auto;
+              "
+            >
+              <h2>
+                Reset your password
+              </h2>
+
+              <p>
+                We received a request to reset
+                your MUSTREAMIFY password.
+              </p>
+
+              <p>
+                Click the button below to create
+                a new password.
+              </p>
+
+              <a
+                href="${resetURL}"
+                style="
+                  display: inline-block;
+                  padding: 12px 20px;
+                  background: #000;
+                  color: #fff;
+                  text-decoration: none;
+                  border-radius: 6px;
+                "
+              >
+                Reset Password
+              </a>
+
+              <p>
+                This link expires in 15 minutes.
+              </p>
+
+              <p>
+                If you didn't request a password
+                reset, ignore this email.
+              </p>
+            </div>
+          `,
+        });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+    } catch (emailError) {
+      // Remove reset token because email failed
+      user.resetPasswordToken = null;
+      user.resetPasswordExpires = null;
+
+      await user.save();
+
+      console.error(
+        "Reset email error:",
+        emailError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to send password reset email",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "If an account exists with this email, a password reset link has been sent.",
+    });
+  } catch (error) {
+    console.error(
+      "Forgot password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+}
+
+// ==========================================
+// RESET PASSWORD
+// ==========================================
+export async function resetPassword(req, res) {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    // 1. Validate password
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must be at least 6 characters long",
+      });
+    }
+
+    // 2. Hash token received from URL
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    // 3. Find user with valid token
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+
+      resetPasswordExpires: {
+        $gt: Date.now(),
+      },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password reset token is invalid or has expired",
+      });
+    }
+
+    /*
+      IMPORTANT:
+
+      Do NOT bcrypt.hash() here.
+
+      Your userSchema.pre("save") middleware
+      automatically hashes the password.
+    */
+
+    // 4. Set new plain password
+    user.password = password;
+
+    // 5. Delete reset token
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+
+    // This triggers pre("save")
+    await user.save();
+
+    // Optional: clear existing login cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure:
+        process.env.NODE_ENV === "production",
+      sameSite:
+        process.env.NODE_ENV === "production"
+          ? "none"
+          : "lax",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Password reset successfully. Please log in with your new password.",
+    });
+  } catch (error) {
+    console.error(
+      "Reset password error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
     });
   }
 }

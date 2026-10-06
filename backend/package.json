@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/server.js",
- "scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js"
-},
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.4",
+    "resend": "^6.32.0",
     "stream-chat": "^9.54.0"
   },
   "devDependencies": {

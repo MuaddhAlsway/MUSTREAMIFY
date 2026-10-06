@@ -5,6 +5,10 @@ import {
     getMyFriends,
     getRecommendedUsers,
     sendFriendRequest,
+    acceptFriendRequest,
+    getFriendRequests,
+    getOutgoingFriendReqs,
+    rejectFriendRequest,
 } from "../controller/userController.js";
 
 import { protectRoute } from "../middleware/authMiddleware.js";
@@ -17,5 +21,9 @@ router.post("/onboarding", onboard);
 router.get("/friends", getMyFriends);
 router.get("/", getRecommendedUsers);
 router.post("/friend-request/:id", sendFriendRequest);
+router.post("/friend-request/:id/accept", acceptFriendRequest);
+router.post("/friend-request/:id/reject", rejectFriendRequest);
 
+router.get("/friend-requests", getFriendRequests)
+router.get("/outgoing-friend-requests", getOutgoingFriendReqs)
 export default router;
