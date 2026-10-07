@@ -1,5 +1,5 @@
-import { Routes, Route } from "react-router-dom";
-import toast, { Toaster } from "react-hot-toast";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
 
 import HomePage from "./pages/HomePage.jsx";
@@ -17,7 +17,7 @@ function App() {
   // Get Authenticated User
   // ==========================================
   const {
-    data: authUser,
+    data: authData,
     isLoading,
     error,
   } = useQuery({
@@ -25,12 +25,16 @@ function App() {
 
     queryFn: async () => {
       const res = await axiosInstance.get("/auth/me");
-
       return res.data;
     },
 
-    retry: false, // auth check
+    retry: false,
   });
+
+  // ==========================================
+  // Extract User
+  // ==========================================
+  const authUser = authData?.user;
 
   // ==========================================
   // Debug
@@ -61,44 +65,132 @@ function App() {
       data-theme="retro"
       className="min-h-screen bg-base-100 text-base-content"
     >
-      <button
-        onClick={() => toast.success("Hello world")}
-        className="btn btn-primary"
-      >
-        Create A Toast
-      </button>
-
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        {/* ======================================
+            Protected Routes
+        ====================================== */}
 
         <Route
-          path="/signup"
-          element={<SignUpPage />}
-        />
-
-        <Route
-          path="/login"
-          element={<LoginPage />}
+          path="/"
+          element={
+            authUser ? (
+              authUser.isOnBoarded ? (
+                <HomePage />
+              ) : (
+                <Navigate to="/onboarding" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
 
         <Route
           path="/notifications"
-          element={<NotificationPage />}
-        />
-
-        <Route
-          path="/call"
-          element={<CallPage />}
+          element={
+            authUser ? (
+              authUser.isOnBoarded ? (
+                <NotificationPage />
+              ) : (
+                <Navigate to="/onboarding" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
 
         <Route
           path="/chat"
-          element={<ChatPage />}
+          element={
+            authUser ? (
+              authUser.isOnBoarded ? (
+                <ChatPage />
+              ) : (
+                <Navigate to="/onboarding" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         />
 
         <Route
+          path="/call"
+          element={
+            authUser ? (
+              authUser.isOnBoarded ? (
+                <CallPage />
+              ) : (
+                <Navigate to="/onboarding" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* ======================================
+            Onboarding
+        ====================================== */}
+
+        <Route
           path="/onboarding"
-          element={<OnboardingPage />}
+          element={
+            authUser ? (
+              authUser.isOnBoarded ? (
+                <Navigate to="/" replace />
+              ) : (
+                <OnboardingPage />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* ======================================
+            Public Auth Routes
+        ====================================== */}
+
+        <Route
+          path="/login"
+          element={
+            !authUser ? (
+              <LoginPage />
+            ) : authUser.isOnBoarded ? (
+              <Navigate to="/" replace />
+            ) : (
+              <Navigate to="/onboarding" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/signup"
+          element={
+            !authUser ? (
+              <SignUpPage />
+            ) : authUser.isOnBoarded ? (
+              <Navigate to="/" replace />
+            ) : (
+              <Navigate to="/onboarding" replace />
+            )
+          }
+        />
+
+        {/* ======================================
+            404
+        ====================================== */}
+
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={authUser ? "/" : "/login"}
+              replace
+            />
+          }
         />
       </Routes>
 
